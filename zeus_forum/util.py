@@ -1,10 +1,12 @@
 import markdown
-import bleach
 
+# https://stackoverflow.com/a/41831049
+# from django.conf import settings
+# from django.db import DEFAULT_DB_ALIAS
+# from django.db.transaction import Atomic, get_connection
 from zeus.utils import sanitize_html
 from contextlib import contextmanager
 from django.db import connection, transaction
-
 
 
 def parse_markdown(text):
@@ -14,12 +16,6 @@ def parse_markdown(text):
         extensions=[])
     html = md.convert(text)
     return sanitize_html(html)
-
-
-# https://stackoverflow.com/a/41831049
-from django.conf import settings
-from django.db import DEFAULT_DB_ALIAS
-from django.db.transaction import Atomic, get_connection
 
 
 @contextmanager
