@@ -1,16 +1,15 @@
-import copy
-import datetime
-import cStringIO as StringIO
+from datetime import datetime
+import io as StringIO
 
 from django.http import HttpResponseRedirect, HttpResponse
 from django.core.urlresolvers import reverse
 from django.conf import settings
-from django.contrib import messages
+
 from django.views.generic import View
 
 from zeus.reports import ElectionsReportCSV, ElectionsReport
-from zeus.utils import render_template, ELECTION_TABLE_HEADERS,\
-    get_filters, ELECTION_SEARCH_FIELDS, ELECTION_BOOL_KEYS_MAP,\
+from zeus.utils import render_template, ELECTION_TABLE_HEADERS, \
+    get_filters, ELECTION_SEARCH_FIELDS, ELECTION_BOOL_KEYS_MAP, \
     REPORT_TABLE_HEADERS, REPORT_SEARCH_FIELDS, REPORT_BOOL_KEYS_MAP
 
 from zeus import auth
@@ -19,22 +18,31 @@ from helios.models import Election
 
 
 class HomeView(View):
+    """
+    View class for handling home page related requests.
+    """
+
     @auth.class_method
     @auth.election_admin_required
-    def get(request, *args, **kwargs):
+    def get(self, request, *args, **kwargs):
+        """
+        Handle HTTP GET requests for displaying the home page.
+        """
         page = int(request.GET.get('page', 1))
-        limit = int(request.GET.get('limit', 10))
+
         q_param = request.GET.get('q', '')
 
-        default_elections_per_page = getattr(settings, 'ELECTIONS_PER_PAGE', 20)
-        elections_per_page = request.GET.get('limit', default_elections_per_page)
+        default_elections_per_page = getattr(settings,
+                                             'ELECTIONS_PER_PAGE', 20)
+        elections_per_page = request.GET.get('limit',
+                                             default_elections_per_page)
         try:
             elections_per_page = int(elections_per_page)
-        except:
+        except ValueError:
             elections_per_page = default_elections_per_page
-        order_by=request.GET.get('order', 'created_at')
+        order_by = request.GET.get('order', 'created_at')
         order_type = request.GET.get('order_type', 'desc')
-        if not order_by in ELECTION_TABLE_HEADERS:
+        if order_by not in ELECTION_TABLE_HEADERS:
             order_by = 'name'
 
         elections = Election.objects.administered_by(request.admin)
@@ -42,7 +50,8 @@ class HomeView(View):
         if nr_unfiltered_elections == 0:
             return HttpResponseRedirect(reverse('election_create'))
 
-        elections = elections.filter(get_filters(q_param, ELECTION_TABLE_HEADERS,
+        elections = elections.filter(get_filters(q_param,
+                                                 ELECTION_TABLE_HEADERS,
                                                  ELECTION_SEARCH_FIELDS,
                                                  ELECTION_BOOL_KEYS_MAP))
         elections = elections.order_by(order_by)
@@ -52,7 +61,7 @@ class HomeView(View):
         context = {
             'is_superadmin': request.admin.superadmin_p,
             'elections_administered': elections,
-            'election_table_headers': ELECTION_TABLE_HEADERS.iteritems(),
+            'election_table_headers': iter(ELECTION_TABLE_HEADERS.items()),
             'q': q_param,
             'page': page,
             'elections_per_page': elections_per_page,
@@ -61,13 +70,16 @@ class HomeView(View):
 
     @auth.class_method
     @auth.manager_or_superadmin_required
-    def post(request, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
+        """
+        Handle HTTP POST requests to update the official status of elections.
+        """
         official = request.POST.getlist('official', '')
         uuid = request.POST.getlist('uuid', None)
 
-        for status, id in zip(official, uuid):
+        for status, election_uuid in zip(official, uuid):
             try:
-                election = Election.objects.get(uuid=id)
+                election = Election.objects.get(uuid=election_uuid)
                 if status == '':
                     status = None
                 else:
@@ -75,12 +87,18 @@ class HomeView(View):
 
                 election.official = status
                 election.save()
-            except:
+            except Election.DoesNotExist:
+                pass
+            except ValueError:
                 pass
 
         return HttpResponseRedirect(reverse('admin_home'))
 
+
 def find_elections(request):
+    """
+    Find elections based on various filters provided in the request parameters.
+    """
     order_by = request.GET.get('order', 'completed_at')
     order_type = request.GET.get('order_type', 'desc')
     start_date = request.GET.get('start_date', None)
@@ -88,7 +106,7 @@ def find_elections(request):
     q = request.GET.get('q', '')
 
     # basic filters
-    filter = {
+    basic_filter = {
         'trial': False,
         'completed_at__isnull': False,
     }
@@ -101,10 +119,12 @@ def find_elections(request):
 
     # filter by date
     if start_date:
-        filter['voting_starts_at__gte'] = datetime.strptime(start_date, "%d %b %Y")
+        basic_filter['voting_starts_at__gte'] = datetime.strptime(start_date,
+                                                            "%d %b %Y")
 
     if end_date:
-        filter['voting_starts_at__lte'] = datetime.strptime(end_date, "%d %b %Y")
+        basic_filter['voting_starts_at__lte'] = datetime.strptime(end_date,
+                                                            "%d %b %Y")
 
     # filter by query
     q_filters = get_filters(
@@ -114,16 +134,17 @@ def find_elections(request):
         REPORT_BOOL_KEYS_MAP
     )
 
-    if not order_by in ELECTION_TABLE_HEADERS:
+    if order_by not in ELECTION_TABLE_HEADERS:
         order_by = 'completed_at'
 
-    elections = Election.objects.filter(**filter).order_by(order_by)
+    elections = Election.objects.filter(**basic_filter).order_by(order_by)
     elections = elections.filter(q_filters)
 
     if order_type == 'desc':
         elections = elections.reverse()
 
     return elections
+
 
 @auth.manager_or_superadmin_required
 def elections_report_csv(request):
@@ -146,8 +167,9 @@ def elections_report_csv(request):
     fd.seek(0)
 
     response = HttpResponse(fd, content_type='application/csv')
-    response['Content-Disposition'] = 'attachment; filename=%s.csv' % filename
+    response['Content-Disposition'] = f'attachment; filename={filename}.csv'
     return response
+
 
 @auth.manager_or_superadmin_required
 def elections_report(request):
@@ -156,7 +178,7 @@ def elections_report(request):
     """
     q_param = request.GET.get('q', '')
 
-    polls_count = votes_count = voters_count = 0
+    polls_count = voters_count = 0
     percentage_voted = voters_voted_count = 0
 
     elections = find_elections(request)
@@ -170,11 +192,11 @@ def elections_report(request):
         voters_count += election['nr_voters']
         voters_voted_count += election['nr_voters_voted']
 
-    if not voters_count is 0:
+    if voters_count != 0:
         percentage_voted = (voters_voted_count / float(voters_count)) * 100
 
     params = ''
-    for key, value in request.GET.items():
+    for key, value in list(request.GET.items()):
         params = params + key + '=' + value + '&'
     params = params[:-1]
 
@@ -186,7 +208,7 @@ def elections_report(request):
         'percentage_voted': percentage_voted,
         'elections': report.objectData,
         'elections_per_page': 10,
-        'report_table_headers': REPORT_TABLE_HEADERS.items(),
+        'report_table_headers': list(REPORT_TABLE_HEADERS.items()),
         'params': params,
         'q': q_param
     }
