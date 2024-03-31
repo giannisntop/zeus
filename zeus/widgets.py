@@ -1,27 +1,19 @@
 # -*- coding: utf-8 -*-
 import datetime
+from time import strftime
 
 from time import strptime, strftime
-from django import forms
-from django.db import models
+from django import forms #removed duplicate import
 from django.forms import fields
-from django import forms
 from django.db import models
 from django.template.loader import render_to_string
 from django.forms.widgets import Select, MultiWidget, DateInput, TextInput
 
-from time import strftime
+hour_selections = [("%02d:%02d" % (t, m), "%02d:%02d" % (t, m)) for t in range(24) for m in range(0, 60, 15)]
 
-
-hour_selections = [('','')]
-for t in range(24):
-    hour_selections.extend([("%02d:00" % t, "%02d:00" % t),
-                            ("%02d:15" % t, "%02d:15" % t),
-                            ("%02d:30" % t, "%02d:30" % t),
-                            ("%02d:45" % t, "%02d:45" % t)])
 hour_selections.append(('23:59', '23:59'))
 
-
+#divides date and time election data into two django widgets
 class JqSplitDateTimeWidget(MultiWidget):
 
     def __init__(self, attrs=None, date_format=None, time_format=None):
@@ -48,7 +40,7 @@ class JqSplitDateTimeWidget(MultiWidget):
             timetuple = value.timetuple()
             d = strftime("%Y-%m-%d", timetuple)
             timeofday = strftime("%H:%M", timetuple)
-            if not timeofday in dict(hour_selections).keys():
+            if not timeofday in list(dict(hour_selections).keys()):
                 timeofday = strftime("%H:00",timetuple)
             return [d, timeofday]
         else:
@@ -67,7 +59,7 @@ class JqSplitDateTimeWidget(MultiWidget):
         </div>
         """ % (rendered_widgets[0], rendered_widgets[1])
 
-
+#compression of date and time fields into one object
 class JqSplitDateTimeField(fields.MultiValueField):
     widget = JqSplitDateTimeWidget
 
